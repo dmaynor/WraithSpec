@@ -1,100 +1,70 @@
-# WraithSpec › VAP Core (CI1 & CIP2)
+# WraithSpec — Standard for Agent Interoperability and AI Meta-Communication
 
-**VAP Core** defines compact, reversible micro-formats for AI↔human communications:
-- **CI1** — configuration micro-format (headers, behavior, ops, identity). [v ✅]
-- **CIP2** — prompt micro-format with a **reasoning-response contract** (`REQ=Trace,Ledger,Decision,Critique`). [v ✅]
+**Version:** SENTINEL 7E99 (VA-Ops)
 
-This repo contains a reference implementation (`vap_micro.py`) and tests.
+## Purpose
 
-## Install & Run
+WraithSpec defines the serialization, compression, and state management protocols that enable consistent, auditable exchanges between agents and human collaborators. This repository serves as the canonical specification for the Wraith ecosystem.
+
+## Current Implementation
+
+This branch integrates the SENTINEL 7E99 header specification, alias-mapped memory profiles, and persistent reasoning context management. The specification targets interoperability across iOS, desktop, and web ChatGPT instances as well as companion agents built on the WraithApp and GhostTool protocol layers.
+
+### Key Components
+
+- **SENTINEL 7E99 Header** — compact, mode-aware communication frame with compressed fields and tracing hooks.
+- **VA-P1@1 Profile** — alias map for compression covering modes, phases, and actors.
+- **RSet@1 Reset Policy** — controlled knowledge reset mechanisms with selective retention of public or session-limited data.
+- **v/u/s Tally System** — factual classification layer for tracking validated, uncertain, and superseded claims.
+- **Persistent Memory Reference (CRef)** — cross-platform storage pointer used to synchronize long-term memory across ChatGPT clients.
+- **Compatibility Matrix** — confirmed support for WraithApp telemetry relays and GhostTool orchestration APIs.
+
+## Repository Layout
+
+```
+WraithSpec/
+├── README.md
+├── specs/
+│   ├── sentinel_7e99_spec.md
+│   ├── alias_profile_VA-P1@1.yaml
+│   ├── reset_policy_RSet@1.yaml
+│   ├── mode_tracker_protocol.md
+│   └── reasoning_depth_matrix.md
+├── examples/
+│   ├── header_prettyprint_example.md
+│   ├── compressed_header_example.txt
+│   └── profile_reference_example.yaml
+└── CHANGELOG.md
+```
+
+> **Note:** Files not yet present in this branch are reserved for upcoming drops and will be published as the implementation matures.
+
+## Getting Started
+
+This repository is documentation-first. Tooling such as `vap_micro.py` remains available for reference decoding and validation of legacy CI1/CIP2 micro-formats.
+
+### Inspect Legacy Micro-Formats
+
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-python -m pip install -U pip
-# No deps required
 python vap_micro.py inspect --kind CI1
 ```
 
-## Quick Start
+### Decode SENTINEL 7E99 Headers (Preview)
 
-### Decode (CI1)
-```bash
-python vap_micro.py decode "CI1|SID=7E96|P=Violator-Actual|HdrC=SENTINEL:7E96:(<UUID>|Violator-Actual|<UTC>|i:[<i>]|2i:[<2i>]|T:<#>|S:<#>)|HdrF=Stack:Violator-Actual;Ts:<UTC>;Model:GPT-5;SENTINEL:7E96"
-```
+Use the examples under `examples/` as fixtures when testing cross-agent integrations. Future revisions will include command-line utilities for generating compressed headers directly from the VA-P1@1 profile.
 
-### Decode (CIP2)
-```bash
-python vap_micro.py decode "CIP2|SID=7E96|P=Violator-Actual|CTX=GhostInTheShellSAC|TASK=analyze_outfit_symbolism|CONS=concise+accurate+traced|TONE=analytical|OUT=essay+trace|REQ=Trace,Ledger,Decision,Critique|MAX=400"
-```
+## Spec Highlights
 
-### Encode
-```bash
-python vap_micro.py encode --kind CIP2 \
-  --field SID=7E96 --field P="Violator-Actual" \
-  --field CTX=GhostInTheShellSAC --field TASK=explain_meaning \
-  --field CONS=concise+accurate+traced --field TONE=analytical \
-  --field OUT=essay+trace --field REQ=Trace,Ledger,Decision,Critique --field MAX=400
-```
+- Persistent header fields include `SID`, `AC` (activity counter), `RD` (reasoning depth), `MODE`, and `PHASE` with optional alias compression.
+- Profiles referenced via `CRef:<profile>@<version>` expose alias dictionaries and compression policies.
+- Mode tracking and reasoning depth matrices define default escalation paths for brainstorm → design → build → review loops.
+- Reset policies (`RSet@1`) govern how agents clear or persist memory across sessions, including mobile and desktop continuations.
+- The v/u/s tally system records validated facts (`v`), uncertain statements (`u`), and superseded or contradicted items (`s`).
 
-### Validate
-```bash
-python vap_micro.py validate "CIP2|SID=7E96|P=Violator-Actual|TASK=explain"
-```
+## Contributing
 
-## Grammar (ABNF-like)
-```
-micro      = kind "|" kv *( "|" kv / "|" flag )
-kind       = "CI1" / "CIP2"
-kv         = key "=" value
-flag       = key
-key        = 1*( ALPHA / DIGIT / "_" )
-value      = *escapedchar
-escapedchar= "\" ( "|" / ";" / "," / "+" / "=" ) / VCHAR
-```
-
-Escaping: values must escape reserved delimiters with backslash (\| \; \, \+ \=). [v ✅]
-
-## Required Keys
-- CI1: SID, P, HdrC, HdrF
-- CIP2: SID, P, CTX, TASK
-
-## Why CIP2?
-
-CIP2 adds an explicit response contract via `REQ=` so answers include:
-- REASONING TRACE (Goal → Inputs → Steps → Tests → Outcome)
-- CLAIM LEDGER with [v ✅]/[u ❓]/[s ❌]
-- DECISION RECORD (options + winner rationale)
-- CRITIQUE (failure modes + mitigations)
-
-This turns prompts into auditable artifacts. [v ✅]
-
-## Testing
-```bash
-python -m unittest -v
-```
+Contributions should extend the specification while keeping backward compatibility for existing CI1/CIP2 tooling. Please open issues to discuss major protocol changes before submitting PRs.
 
 ## License
 
 MIT
-
----
-
-### `pyproject.toml` (optional, for packaging/lint)
-```toml
-[project]
-name = "wraithspec-vap"
-version = "0.1.0"
-description = "WraithSpec › VAP Core micro-formats (CI1 & CIP2) reference implementation"
-readme = "README.md"
-requires-python = ">=3.8"
-dependencies = []
-
-[project.scripts]
-vap-micro = "vap_micro:_cli"
-```
-
-Notes
-- Escaping/unescaping ensures lossless transport through headers, env vars, and logs. [v ✅]
-- Deterministic key ordering in encode() improves diffs and reproducibility. [v ✅]
-- Tests cover round-trip, required-key validation, and escaping edge cases. [v ✅]
-
-If you want JS/Go adapters next, I’ll mirror the same grammar and conformance vectors.
