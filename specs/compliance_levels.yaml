@@ -1,0 +1,388 @@
+# SPDX-License-Identifier: MIT
+# WraithSpec Compliance Level Schema v0.1
+# =======================================
+#
+# This schema defines the taxonomy for classifying output compliance
+# against WraithSpec specifications. Used by validators to report
+# conformance status and determine retry eligibility.
+
+version: "0.1"
+schema: "compliance_levels"
+
+# =============================================================================
+# COMPLIANCE LEVEL TAXONOMY
+# =============================================================================
+#
+# Levels are ordered from most compliant to most severe violation.
+# Each level includes:
+#   - description: Human-readable explanation
+#   - severity_weight: Numeric weight for scoring (0-100)
+#   - retry_eligible: Whether the operation can be retried
+#   - escalation_action: Recommended action when this level is reached
+#   - example_violations: Concrete examples of what triggers this level
+
+levels:
+  # ---------------------------------------------------------------------------
+  # COMPLIANT: Full specification adherence
+  # ---------------------------------------------------------------------------
+  COMPLIANT:
+    description: >
+      All requirements met. The output fully conforms to the WraithSpec
+      specification with no deviations. All required fields present,
+      all constraints satisfied, all formats valid.
+    severity_weight: 0
+    retry_eligible: false
+    escalation_action: none
+    indicators:
+      - All required header fields present and valid
+      - All constraint rules pass
+      - Output format matches schema
+      - v/u/s tally balanced (v >= u, s = 0 or justified)
+      - Profile references resolve correctly
+    example_violations: []
+    # No violations at this level - this is the target state
+
+  # ---------------------------------------------------------------------------
+  # PARTIAL: Core requirements met, optional violations
+  # ---------------------------------------------------------------------------
+  PARTIAL:
+    description: >
+      Core requirements are satisfied but optional fields or soft
+      constraints have violations. The output is usable but not ideal.
+      Common in incremental builds or draft modes.
+    severity_weight: 25
+    retry_eligible: true
+    escalation_action: warn
+    indicators:
+      - Required fields present but optional fields missing
+      - Soft constraints violated (formatting, style)
+      - Minor schema deviations that don't affect parsing
+      - Suboptimal but valid tally ratios
+    example_violations:
+      - missing_optional_context:
+          description: "CONTEXT field omitted in full frame header"
+          field: "CONTEXT"
+          constraint: "optional"
+          impact: "Reduced auditability but header remains valid"
+      - informal_profile_reference:
+          description: "CRef uses shorthand without @version suffix"
+          field: "CRef"
+          expected: "VA-P1@1"
+          actual: "VA-P1"
+          impact: "May default to latest version, reducing reproducibility"
+      - exceeded_soft_limit:
+          description: "Output exceeds MAX soft limit by <20%"
+          field: "MAX"
+          expected: 400
+          actual: 475
+          impact: "Output longer than requested but within tolerance"
+      - missing_tally_in_trace_mode:
+          description: "RD >= 2 but no v/u/s markers in output"
+          field: "TALLY"
+          constraint: "recommended at RD >= 2"
+          impact: "Claim tracking incomplete"
+
+  # ---------------------------------------------------------------------------
+  # NON_COMPLIANT: Core requirement violations
+  # ---------------------------------------------------------------------------
+  NON_COMPLIANT:
+    description: >
+      One or more core requirements are violated. The output cannot be
+      reliably processed or trusted without remediation. Requires
+      correction before acceptance.
+    severity_weight: 75
+    retry_eligible: true
+    escalation_action: reject_with_feedback
+    indicators:
+      - Required fields missing or malformed
+      - Hard constraints violated
+      - Schema validation fails
+      - Profile reference unresolvable
+      - Parsing errors in header structure
+    example_violations:
+      - missing_required_sid:
+          description: "SID field missing from header"
+          field: "SID"
+          constraint: "required"
+          impact: "Cannot track session identity or correlate actions"
+      - invalid_mode_value:
+          description: "MODE contains unrecognized value"
+          field: "MODE"
+          expected: "brainstorm|design|build|review|narrative or aliases"
+          actual: "thinking"
+          impact: "Cannot determine operational mode"
+      - malformed_cref:
+          description: "Profile reference fails to parse"
+          field: "CRef"
+          expected: "<profile_id>@<version>"
+          actual: "VA-P1@@2"
+          impact: "Cannot resolve alias mappings"
+      - invalid_base36:
+          description: "AC field contains invalid base36 characters"
+          field: "AC"
+          expected: "[0-9a-z]+"
+          actual: "1$x"
+          impact: "Cannot determine activity counter value"
+      - missing_ci1_required:
+          description: "CI1 micro-line missing required HdrC field"
+          field: "HdrC"
+          constraint: "required for CI1"
+          impact: "Configuration incomplete"
+      - missing_cip2_required:
+          description: "CIP2 micro-line missing required TASK field"
+          field: "TASK"
+          constraint: "required for CIP2"
+          impact: "Cannot determine requested operation"
+
+  # ---------------------------------------------------------------------------
+  # VIOLATION: Hard constraint breach
+  # ---------------------------------------------------------------------------
+  VIOLATION:
+    description: >
+      A hard constraint has been breached that indicates a fundamental
+      protocol failure or potential security/integrity issue. The output
+      must be rejected and the operation may need investigation.
+    severity_weight: 100
+    retry_eligible: false
+    escalation_action: reject_and_log
+    indicators:
+      - Security-relevant constraints breached
+      - Integrity checks failed
+      - Protocol version mismatch
+      - Forbidden operations attempted
+      - Data corruption detected
+    example_violations:
+      - forbidden_field_present:
+          description: "Output contains explicitly forbidden content"
+          constraint: "FORBIDDEN"
+          impact: "Security policy violation"
+      - protocol_version_mismatch:
+          description: "SENTINEL version incompatible with validator"
+          field: "spec_version"
+          expected: "7E99"
+          actual: "7F00"
+          impact: "Cannot validate against unknown protocol version"
+      - tally_integrity_failure:
+          description: "v/u/s tally counts don't match claim markers"
+          field: "TALLY"
+          expected: "v:5;u:2;s:1"
+          actual: "v:3;u:1;s:0"
+          impact: "Audit trail corrupted"
+      - reset_policy_violation:
+          description: "Hard reset requested but validated claims persisted"
+          field: "RSET"
+          constraint: "hard reset must clear all claims"
+          impact: "Reset policy not honored"
+      - recursive_depth_exceeded:
+          description: "RD exceeds maximum allowed depth without authorization"
+          field: "RD"
+          expected: "<= 5"
+          actual: "9"
+          impact: "Potential infinite loop or resource exhaustion"
+
+
+# =============================================================================
+# SCORING RULES
+# =============================================================================
+#
+# Rules for calculating compliance scores from individual field validations.
+
+scoring:
+  # How to aggregate multiple violations
+  aggregation_method: "weighted_sum"
+
+  # Maximum score before automatic VIOLATION status
+  violation_threshold: 100
+
+  # Score ranges for each level
+  score_ranges:
+    COMPLIANT:
+      min: 0
+      max: 0
+    PARTIAL:
+      min: 1
+      max: 49
+    NON_COMPLIANT:
+      min: 50
+      max: 99
+    VIOLATION:
+      min: 100
+      max: null  # No upper limit
+
+  # Weight modifiers for constraint types
+  constraint_weights:
+    REQUIRED: 50      # Missing required field
+    OPTIONAL: 10      # Missing optional field
+    FORBIDDEN: 100    # Forbidden content present
+    CONDITIONAL: 25   # Conditional constraint failed
+    FORMAT: 15        # Format validation failed
+    RANGE: 20         # Value out of range
+    REFERENCE: 30     # Unresolvable reference
+
+
+# =============================================================================
+# RETRY POLICIES
+# =============================================================================
+#
+# Defines retry behavior for each compliance level.
+
+retry_policies:
+  # PARTIAL violations can be retried with hints
+  PARTIAL:
+    max_retries: 3
+    backoff_strategy: "linear"
+    include_feedback: true
+    feedback_detail: "summary"
+
+  # NON_COMPLIANT requires specific remediation
+  NON_COMPLIANT:
+    max_retries: 2
+    backoff_strategy: "exponential"
+    include_feedback: true
+    feedback_detail: "full"
+    require_field_corrections: true
+
+  # VIOLATION is not automatically retryable
+  VIOLATION:
+    max_retries: 0
+    require_manual_review: true
+    log_incident: true
+
+
+# =============================================================================
+# FIELD REQUIREMENTS BY DOCUMENT TYPE
+# =============================================================================
+#
+# Specifies which fields are required, optional, or forbidden per document type.
+
+field_requirements:
+  sentinel_full_frame:
+    required:
+      - SID
+      - MODE
+      - PHASE
+    optional:
+      - AC
+      - RD
+      - RSET
+      - CRef
+      - ORIGIN
+      - TARGET
+      - CLAIMS
+      - CONTEXT
+    forbidden: []
+
+  sentinel_compact:
+    required:
+      - SID
+    optional:
+      - MODE
+      - PHASE
+      - AC
+      - RD
+      - CRef
+      - RSET
+      - TALLY
+    forbidden: []
+
+  ci1:
+    required:
+      - SID
+      - P
+      - HdrC
+      - HdrF
+    optional:
+      - Ver
+      - B
+      - Reasoning
+      - O
+      - ID
+      - Nick
+      - Role
+      - Stack
+      - Field
+    forbidden: []
+
+  cip2:
+    required:
+      - SID
+      - P
+      - CTX
+      - TASK
+    optional:
+      - CONS
+      - TONE
+      - OUT
+      - REQ
+      - MAX
+    forbidden: []
+
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+#
+# Specific validation patterns for field values.
+
+validation_rules:
+  # Base36 encoding pattern
+  base36:
+    pattern: "^[0-9a-zA-Z]+$"
+    max_length: 3
+    description: "Alphanumeric base36 encoding"
+
+  # UUID v7 pattern
+  uuid_v7:
+    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    description: "UUID version 7 format"
+
+  # Profile reference pattern
+  profile_reference:
+    pattern: "^[A-Za-z][A-Za-z0-9_-]*@[0-9]+(?:\\.[0-9]+)*(?:-[a-z]+)?$"
+    description: "Profile ID with version: <id>@<version>"
+
+  # Mode values
+  mode:
+    valid_values:
+      - brainstorm
+      - design
+      - build
+      - review
+      - narrative
+    valid_aliases:
+      - bs
+      - d
+      - bl
+      - r
+      - n
+
+  # Phase values
+  phase:
+    valid_values:
+      - ideation
+      - tradeoff
+      - coding
+      - red-team
+      - explain
+    valid_aliases:
+      - id
+      - tr
+      - cd
+      - rt
+      - ex
+
+  # Reasoning depth
+  reasoning_depth:
+    min: 0
+    max: 9
+    description: "Depth 0-5 standard, 6+ for recursive delegation"
+
+  # Activity counter
+  activity_counter:
+    max_decimal: 46655  # "zzz" in base36
+    rollover_at: "zzz"
+
+
+# =============================================================================
+# END OF SCHEMA
+# =============================================================================

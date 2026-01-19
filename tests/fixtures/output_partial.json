@@ -1,0 +1,22 @@
+{
+  "header": {
+    "SID": "full-test-7e99",
+    "MODE": "design",
+    "PHASE": "tradeoff"
+  },
+  "result": {
+    "summary": "Analysis completed with minor deviations from specification.",
+    "findings": [
+      {
+        "description": "Core requirements satisfied",
+        "status": "validated"
+      }
+    ]
+  },
+  "tally": {
+    "v": 1,
+    "u": 3,
+    "s": 0
+  },
+  "notes": "This output demonstrates PARTIAL compliance. Issues include: 1) Uncertainty count exceeds validation count (u > v), indicating incomplete verification. 2) Missing detailed trace information despite RD >= 2 in spec. 3) No CONTEXT checkpoint despite being at AC mod 6 boundary."
+}

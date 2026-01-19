@@ -1,0 +1,32 @@
+{
+  "header": {
+    "SID": "wrong-sid-mismatch",
+    "MODE": "invalid_mode",
+    "PHASE": "unknown_phase"
+  },
+  "result": {
+    "summary": "This output violates hard constraints."
+  },
+  "secrets": {
+    "api_key": "sk-forbidden-content",
+    "password": "should-not-be-here"
+  },
+  "tally": {
+    "v": 10,
+    "u": 0,
+    "s": 0
+  },
+  "audit_failure": {
+    "reason": "Tally counts do not match actual content markers",
+    "expected_v": 0,
+    "actual_v": 10,
+    "integrity_check": "FAILED"
+  },
+  "violation_notes": [
+    "SID mismatch: 'wrong-sid-mismatch' vs expected 'full-test-7e99'",
+    "Invalid MODE value: 'invalid_mode' not in allowed set",
+    "Invalid PHASE value: 'unknown_phase' not in allowed set",
+    "FORBIDDEN field 'secrets' is present",
+    "Tally integrity failure: claimed 10 validated but 0 markers found"
+  ]
+}
