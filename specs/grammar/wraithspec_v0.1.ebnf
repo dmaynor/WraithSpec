@@ -1,0 +1,490 @@
+(* SPDX-License-Identifier: MIT *)
+(* WraithSpec v0.1 Formal Grammar *)
+(* ================================ *)
+(*
+ * This EBNF grammar defines the syntax for WraithSpec documents,
+ * including SENTINEL headers, CI1/CIP2 micro-formats, and
+ * profile references.
+ *
+ * Notation follows ISO/IEC 14977 EBNF with extensions:
+ *   - (* ... *) for comments
+ *   - ? ... ? for special sequences
+ *   - {...} for zero or more repetitions
+ *   - [...] for optional elements
+ *   - | for alternatives
+ *   - , for concatenation
+ *   - ; for rule termination
+ *)
+
+(* ============================================================== *)
+(* 1. DOCUMENT STRUCTURE                                          *)
+(* ============================================================== *)
+
+(* A WraithSpec document consists of a header followed by sections *)
+wraithspec_document = header , { section } , [ directive_block ] ;
+
+(* Document header declares format version and profile *)
+header = sentinel_header | micro_header ;
+
+(* Sections contain structured content *)
+section = section_marker , section_body ;
+
+section_marker = "##" , whitespace , section_name , newline ;
+
+section_name = identifier ;
+
+section_body = { content_line | subsection | constraint_block | capability_declaration } ;
+
+subsection = "###" , whitespace , identifier , newline , { content_line } ;
+
+content_line = ? any text not starting with ## or directive markers ? , newline ;
+
+
+(* ============================================================== *)
+(* 2. SENTINEL HEADER FORMAT                                      *)
+(* ============================================================== *)
+
+(* Full SENTINEL header with all fields *)
+sentinel_header = sentinel_full_frame | sentinel_compact ;
+
+(* Full Frame format: SENTINEL:7E99:(...) *)
+sentinel_full_frame = "SENTINEL" , ":" , spec_version , ":" , "(" ,
+                      sentinel_fields , ")" ;
+
+spec_version = hexdigit , hexdigit , hexdigit , hexdigit ;
+(* e.g., "7E99" for current version *)
+
+(* Sentinel fields are pipe-separated key:value pairs *)
+sentinel_fields = sentinel_field , { "|" , sentinel_field } ;
+
+sentinel_field = sid_field
+               | mode_field
+               | phase_field
+               | ac_field
+               | rd_field
+               | rset_field
+               | cref_field
+               | origin_field
+               | target_field
+               | claims_field
+               | context_field ;
+
+(* SID: Session/Sentinel identifier *)
+sid_field = "SID" , ":" , ( uuid_v7 | base36_sid ) ;
+
+uuid_v7 = hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit ,
+          "-" , hexdigit , hexdigit , hexdigit , hexdigit ,
+          "-" , hexdigit , hexdigit , hexdigit , hexdigit ,
+          "-" , hexdigit , hexdigit , hexdigit , hexdigit ,
+          "-" , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit , hexdigit ;
+
+base36_sid = base36_char , { base36_char } ;
+(* Short session identifiers, e.g., "7E99", "7E96" *)
+
+(* MODE: Current operational mode *)
+mode_field = "MODE" , ":" , ( mode_canonical | mode_alias ) ;
+
+mode_canonical = "brainstorm" | "design" | "build" | "review" | "narrative" ;
+
+mode_alias = "bs" | "d" | "bl" | "r" | "n" ;
+(* Aliases per CMap=1: bs=brainstorm, d=design, bl=build, r=review, n=narrative *)
+
+(* PHASE: Current operational phase *)
+phase_field = "PHASE" , ":" , ( phase_canonical | phase_alias ) ;
+
+phase_canonical = "ideation" | "tradeoff" | "coding" | "red-team" | "explain" ;
+
+phase_alias = "id" | "tr" | "cd" | "rt" | "ex" ;
+(* Aliases per CMap=1: id=ideation, tr=tradeoff, cd=coding, rt=red-team, ex=explain *)
+
+(* AC: Activity Counter - tracks agent actions since last reset *)
+ac_field = "AC" , ":" , ( integer | base36_counter ) ;
+
+base36_counter = base36_char , [ base36_char ] , [ base36_char ] ;
+(* Max 3 base36 digits, rolls over after "zzz" *)
+
+(* RD: Reasoning Depth - nested deliberation level 0-5+ *)
+rd_field = "RD" , ":" , ( integer | base36_char ) ;
+(*
+ * Reasoning depth levels:
+ *   0 = Direct: single-pass response
+ *   1 = Trace: includes input/output lineage
+ *   2 = Ledger: adds claim ledger with v/u/s
+ *   3 = Decision: evaluates alternatives
+ *   4 = Critique: adversarial review
+ *   5+ = Recursive: delegates to specialized agents
+ *)
+
+(* RSET: Reset policy reference *)
+rset_field = "RSET" , ":" , reset_policy ;
+
+reset_policy = policy_id , [ "@" , version ] ;
+
+policy_id = "hard" | "soft" | "transfer" | identifier ;
+(*
+ * Reset policies:
+ *   hard = clears all context except identity keys
+ *   soft = retains validated claims, flushes drafts
+ *   transfer = prepares cross-platform handoff
+ *)
+
+(* CRef: Profile reference for alias maps and compression rules *)
+cref_field = "CRef" , ":" , profile_reference ;
+
+profile_reference = profile_id , "@" , version ;
+
+profile_id = letter , { letter | digit | "-" | "_" } ;
+(* e.g., "VA-P1" *)
+
+version = digit , { digit | "." | letter } ;
+(* e.g., "1", "1.0", "2.1-beta" *)
+
+(* ORIGIN/TARGET: Platform endpoints *)
+origin_field = "ORIGIN" , ":" , platform_id ;
+
+target_field = "TARGET" , ":" , platform_id ;
+
+platform_id = "ios" | "desktop" | "web" | "ghosttool" | "wraithapp" | identifier ;
+
+(* CLAIMS: Claim tally using v/u/s classification *)
+claims_field = "CLAIMS" , ":" , tally_expression ;
+
+tally_expression = "v" , "=" , integer , ";" , "u" , "=" , integer , ";" , "s" , "=" , integer ;
+(* e.g., "v=3;u=1;s=0" *)
+
+(* CONTEXT: Free-text summary for mode/phase transitions *)
+context_field = "CONTEXT" , ":" , quoted_string | unquoted_text ;
+
+
+(* ============================================================== *)
+(* 3. COMPACT SENTINEL HEADER (HdrC)                              *)
+(* ============================================================== *)
+
+(* Compact form uses pipe separators and compressed values *)
+sentinel_compact = compact_field , { "|" , compact_field } ;
+
+compact_field = compact_sid
+              | compact_mode
+              | compact_phase
+              | compact_ac
+              | compact_rd
+              | compact_cref
+              | compact_rset
+              | compact_tally
+              | flag_field ;
+
+compact_sid = "SID" , "=" , base36_sid ;
+
+compact_mode = "MODE" , "=" , mode_alias ;
+
+compact_phase = "PHASE" , "=" , phase_alias ;
+
+compact_ac = "AC" , "=" , base36_counter ;
+
+compact_rd = "RD" , "=" , ( digit | base36_char ) ;
+
+compact_cref = "CRef" , "=" , profile_reference ;
+
+compact_rset = "RSET" , "=" , ( "hard" | "soft" | "transfer" | identifier ) ;
+
+(* TALLY: Compressed claim counts *)
+compact_tally = "TALLY" , "=" , "v:" , integer , ",u:" , integer , ",s:" , integer ;
+(* e.g., "TALLY=v:3,u:1,s:0" *)
+
+(* Boolean flags *)
+flag_field = flag_name , [ "=" , flag_value ] ;
+
+flag_name = "cq" | "L" | "DR" | identifier ;
+
+flag_value = "on" | "off" | "auto" | "1" | "0" | "true" | "false" ;
+
+
+(* ============================================================== *)
+(* 4. MICRO-FORMAT HEADERS (CI1/CIP2)                             *)
+(* ============================================================== *)
+
+(* CI1: Configuration micro-line *)
+micro_header = ci1_header | cip2_header ;
+
+ci1_header = "CI1" , "|" , ci1_fields ;
+
+ci1_fields = ci1_field , { "|" , ci1_field } ;
+
+ci1_field = ci1_sid
+          | ci1_profile
+          | ci1_version
+          | ci1_behavior
+          | ci1_hdrc
+          | ci1_hdrf
+          | ci1_reasoning
+          | ci1_ops
+          | ci1_identity
+          | generic_kv ;
+
+ci1_sid = "SID" , "=" , base36_sid ;
+
+ci1_profile = "P" , "=" , profile_name ;
+
+profile_name = identifier , { "-" , identifier } ;
+(* e.g., "Violator-Actual" *)
+
+ci1_version = "Ver" , "=" , version ;
+
+ci1_behavior = "B" , "=" , behavior_list ;
+
+behavior_list = behavior_index , { ( "+" | "," ) , behavior_index } ;
+
+behavior_index = digit ;
+(*
+ * Behavior indices (B=0,1,2...):
+ *   0 = Professional (no flattery)
+ *   1 = Precise
+ *   2 = Don't paraphrase input
+ *   3 = Code: PEP-8 + docs + tests
+ *   4 = Inline [v/u/s] tags + tally in Full
+ *   5 = Red-team ideas & failure modes
+ *   6 = Clean closure (no promises)
+ *)
+
+ci1_hdrc = "HdrC" , "=" , sentinel_compact ;
+
+ci1_hdrf = "HdrF" , "=" , hdrf_pairs ;
+
+hdrf_pairs = hdrf_pair , { ";" , hdrf_pair } ;
+
+hdrf_pair = identifier , ":" , field_value ;
+(* e.g., "Stack:Violator-Actual;Model:Claude-3" *)
+
+ci1_reasoning = ( "Reasoning" | "R" ) , "=" , reasoning_mode ;
+
+reasoning_mode = "trace" | "ledger" | "decision" | "critique" | identifier ;
+
+ci1_ops = "O" , "=" , module_list ;
+
+module_list = identifier , { "," , identifier } ;
+
+ci1_identity = ( "ID" | "Nick" | "Role" | "Stack" | "Field" ) , "=" , field_value ;
+
+
+(* CIP2: Prompt micro-line *)
+cip2_header = "CIP2" , "|" , cip2_fields ;
+
+cip2_fields = cip2_field , { "|" , cip2_field } ;
+
+cip2_field = cip2_sid
+           | cip2_profile
+           | cip2_context
+           | cip2_task
+           | cip2_constraints
+           | cip2_tone
+           | cip2_output
+           | cip2_request
+           | cip2_max
+           | generic_kv ;
+
+cip2_sid = "SID" , "=" , base36_sid ;
+
+cip2_profile = "P" , "=" , profile_name ;
+
+cip2_context = "CTX" , "=" , context_value ;
+
+context_value = identifier , { ":" , identifier } ;
+(* e.g., "GITS:SAC" for Ghost in the Shell: Stand Alone Complex *)
+
+cip2_task = "TASK" , "=" , task_name ;
+
+task_name = identifier , { "_" , identifier } ;
+(* e.g., "analyze_outfit_symbolism" *)
+
+cip2_constraints = "CONS" , "=" , constraint_list ;
+
+constraint_list = constraint_name , { "+" , constraint_name } ;
+
+constraint_name = "concise" | "accurate" | "traced" | "formal" | identifier ;
+
+cip2_tone = "TONE" , "=" , tone_value ;
+
+tone_value = "analytical" | "casual" | "formal" | "technical" | identifier ;
+
+cip2_output = "OUT" , "=" , output_format ;
+
+output_format = format_type , { "+" , format_type } ;
+
+format_type = "essay" | "trace" | "json" | "yaml" | "markdown" | "code" | identifier ;
+
+cip2_request = "REQ" , "=" , request_list ;
+
+request_list = request_item , { "," , request_item } ;
+
+request_item = "Trace" | "Ledger" | "Decision" | "Critique" | identifier ;
+
+cip2_max = ( "MAX" | "max" ) , "=" , integer ;
+
+
+(* ============================================================== *)
+(* 5. CAPABILITY DECLARATIONS                                     *)
+(* ============================================================== *)
+
+(* Declares agent capabilities within a spec *)
+capability_declaration = "CAPABILITY" , ":" , capability_name ,
+                         [ "(" , capability_params , ")" ] , newline ;
+
+capability_name = identifier ;
+
+capability_params = capability_param , { "," , capability_param } ;
+
+capability_param = identifier , [ "=" , field_value ] ;
+
+
+(* ============================================================== *)
+(* 6. CONSTRAINT BLOCKS                                           *)
+(* ============================================================== *)
+
+(* Constraint blocks define validation rules *)
+constraint_block = "CONSTRAINTS" , ":" , newline , { constraint_rule } ;
+
+constraint_rule = constraint_type , ":" , constraint_expression , newline ;
+
+constraint_type = "REQUIRED" | "OPTIONAL" | "FORBIDDEN" | "CONDITIONAL" ;
+
+constraint_expression = field_path , constraint_op , constraint_value ;
+
+field_path = identifier , { "." , identifier } ;
+(* e.g., "header.SID", "claims.v" *)
+
+constraint_op = "==" | "!=" | ">" | "<" | ">=" | "<=" | "exists" | "matches" ;
+
+constraint_value = integer | quoted_string | regex_pattern | "null" | "true" | "false" ;
+
+
+(* ============================================================== *)
+(* 7. OUTPUT SCHEMA REFERENCES                                    *)
+(* ============================================================== *)
+
+(* References to expected output schemas *)
+output_schema_ref = "OUTPUT_SCHEMA" , ":" , schema_location , newline ;
+
+schema_location = file_path | url | inline_schema ;
+
+file_path = identifier , { "/" , identifier } , "." , extension ;
+
+url = "http" , [ "s" ] , "://" , ? URL characters ? ;
+
+inline_schema = "{" , ? JSON schema content ? , "}" ;
+
+extension = "json" | "yaml" | "ws" ;
+
+
+(* ============================================================== *)
+(* 8. DIRECTIVE BLOCKS                                            *)
+(* ============================================================== *)
+
+(* Directives control processing behavior *)
+directive_block = "---" , newline , { directive } , "---" , newline ;
+
+directive = directive_name , ":" , directive_value , newline ;
+
+directive_name = "version" | "profile" | "mode" | "strict" | identifier ;
+
+directive_value = field_value ;
+
+
+(* ============================================================== *)
+(* 9. v/u/s TALLY SYNTAX                                          *)
+(* ============================================================== *)
+
+(*
+ * The v/u/s tally tracks claim validation status:
+ *   v = validated: corroborated with evidence
+ *   u = uncertain: pending validation or incomplete
+ *   s = superseded: retracted or contradicted
+ *)
+
+tally_inline = "[" , tally_marker , "]" ;
+(* Inline markers: [v], [u], [s] *)
+
+tally_marker = "v" | "u" | "s" ;
+
+tally_summary = "v:" , integer , "/" , "u:" , integer , "/" , "s:" , integer ;
+(* Summary format: v:3/u:1/s:0 *)
+
+tally_block = "TALLY" , newline ,
+              "  validated:" , integer , newline ,
+              "  uncertain:" , integer , newline ,
+              "  superseded:" , integer , newline ;
+
+
+(* ============================================================== *)
+(* 10. GENERIC KEY-VALUE PAIRS                                    *)
+(* ============================================================== *)
+
+(* Allows extension with custom fields *)
+generic_kv = identifier , "=" , field_value ;
+
+field_value = quoted_string
+            | unquoted_value
+            | list_value
+            | nested_pairs ;
+
+quoted_string = '"' , { ? any character except unescaped quote ? } , '"' ;
+
+unquoted_value = { letter | digit | "-" | "_" | "." | "/" | ":" } ;
+
+unquoted_text = { ? any character except reserved delimiters ? } ;
+
+list_value = "[" , [ field_value , { "," , field_value } ] , "]" ;
+
+nested_pairs = field_value , { ";" , field_value } ;
+
+
+(* ============================================================== *)
+(* 11. LEXICAL ELEMENTS                                           *)
+(* ============================================================== *)
+
+identifier = letter , { letter | digit | "_" | "-" } ;
+
+integer = [ "-" ] , digit , { digit } ;
+
+letter = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
+       | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
+       | "u" | "v" | "w" | "x" | "y" | "z"
+       | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
+       | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
+       | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+hexdigit = digit | "a" | "b" | "c" | "d" | "e" | "f"
+                 | "A" | "B" | "C" | "D" | "E" | "F" ;
+
+base36_char = digit | letter ;
+(* Base36 encoding uses 0-9 and a-z (case insensitive) *)
+
+whitespace = " " | "\t" ;
+
+newline = "\n" | "\r\n" ;
+
+regex_pattern = "/" , { ? any character except unescaped slash ? } , "/" ;
+
+
+(* ============================================================== *)
+(* 12. RESERVED CHARACTERS AND ESCAPING                           *)
+(* ============================================================== *)
+
+(*
+ * Reserved characters in micro-format values must be escaped:
+ *   | (pipe) - segment separator
+ *   ; (semicolon) - nested pair separator
+ *   , (comma) - list separator
+ *   + (plus) - alternative list separator
+ *   = (equals) - key-value separator
+ *
+ * Escaping uses backslash: \| \; \, \+ \=
+ *)
+
+escaped_char = "\\" , ( "|" | ";" | "," | "+" | "=" ) ;
+
+
+(* ============================================================== *)
+(* END OF GRAMMAR                                                 *)
+(* ============================================================== *)
