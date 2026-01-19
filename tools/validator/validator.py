@@ -139,9 +139,14 @@ def validate_base36(value: str, field_name: str) -> Optional[FieldViolation]:
     return None
 
 
-def validate_uuid_v7(value: str, field_name: str) -> Optional[FieldViolation]:
+def validate_sid(value: str, field_name: str) -> Optional[FieldViolation]:
     """
-    Validate that a value is a valid UUID v7.
+    Validate that a value is a valid SID (Session/Sentinel Identifier).
+
+    Valid SID formats:
+    - UUID v7: xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx
+    - Short base36: 7E99, abc123
+    - Alphanumeric with hyphens: full-test-7e99, my-session-id
 
     Args:
         value: The value to validate
@@ -150,17 +155,25 @@ def validate_uuid_v7(value: str, field_name: str) -> Optional[FieldViolation]:
     Returns:
         FieldViolation if invalid, None if valid
     """
-    if not UUID_V7_RE.match(value):
-        # Check if it's a short SID (valid base36)
-        if BASE36_RE.match(value):
-            return None  # Short SIDs are valid
-        return FieldViolation(
-            field=field_name,
-            message=f"Invalid UUID v7 or SID format: {value}",
-            expected="UUID v7 or base36 SID",
-            actual=value,
-        )
-    return None
+    # Accept UUID v7
+    if UUID_V7_RE.match(value):
+        return None
+
+    # Accept base36 SIDs
+    if BASE36_RE.match(value):
+        return None
+
+    # Accept alphanumeric identifiers with hyphens/underscores
+    # This is a more permissive pattern for human-readable SIDs
+    if re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", value):
+        return None
+
+    return FieldViolation(
+        field=field_name,
+        message=f"Invalid SID format: {value}",
+        expected="UUID v7, base36, or alphanumeric identifier",
+        actual=value,
+    )
 
 
 def validate_mode(value: str, field_name: str = "MODE") -> Optional[FieldViolation]:
@@ -347,7 +360,7 @@ def validate_header(header: Header) -> ValidationResult:
 
     # SID validation
     if "SID" in fields:
-        violation = validate_uuid_v7(str(fields["SID"]), "SID")
+        violation = validate_sid(str(fields["SID"]), "SID")
         if violation:
             result.violations.append(violation)
             result.valid = False

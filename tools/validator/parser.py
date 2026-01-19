@@ -624,7 +624,8 @@ def parse_document(content: str) -> Document:
                     value=None,
                 )
 
-                for op in ["==", "!=", ">=", "<=", ">", "<", "matches", "exists"]:
+                # Handle operators with values: "field op value"
+                for op in ["==", "!=", ">=", "<=", ">", "<", "matches"]:
                     if f" {op} " in expr:
                         parts = expr.split(f" {op} ", 1)
                         constraint.field_path = parts[0].strip()
@@ -632,6 +633,12 @@ def parse_document(content: str) -> Document:
                         if len(parts) > 1:
                             constraint.value = parts[1].strip().strip('"\'')
                         break
+                else:
+                    # Handle "field exists" at end of expression
+                    if expr.endswith(" exists"):
+                        constraint.field_path = expr[:-7].strip()  # Remove " exists"
+                        constraint.operator = "exists"
+                        constraint.value = None
 
                 doc.constraints.append(constraint)
                 line_num += 1
