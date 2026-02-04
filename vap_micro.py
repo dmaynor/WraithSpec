@@ -134,7 +134,7 @@ def _require_keys(kind: str, kv: Dict[str, str]) -> None:
 
 def _pairs_to_dict(pairs: str) -> Dict[str, str]:
     """
-    Convert semicolon pairs "k1:v1;k2:v2;flag" to dict; bare tokens => True.
+    Convert semicolon pairs "k1:v1;k2:v2;flag" to dict; bare tokens => "true".
     """
     result: Dict[str, str] = {}
     if not pairs:
@@ -144,7 +144,7 @@ def _pairs_to_dict(pairs: str) -> Dict[str, str]:
             k, v = item.split(":", 1)
             result[k.strip()] = v.strip()
         else:
-            result[item] = True
+            result[item] = "true"
     return result
 
 
@@ -159,7 +159,7 @@ def _plus_list(val: str) -> List[str]:
 def _to_int(val: str) -> int:
     try:
         return int(val)
-    except Exception:
+    except ValueError:
         return 0
 
 
@@ -272,7 +272,7 @@ def validate(line: str) -> Dict[str, object]:
         try:
             _require_keys(kind, kv)
         except KeyError as e:
-            missing = re.findall(r"\[(.*?)\]", str(e))
+            missing = re.findall(r"'([^']+)'", str(e))
             report.update({"ok": False, "kind": kind, "missing": missing})
             return report
         # Decoding will raise if anything else is wrong
